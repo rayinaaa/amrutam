@@ -1,0 +1,989 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Amrutam Telemedicine Backend API",
+    "version": "1.0.0",
+    "description": "Production-grade enterprise REST API for Amrutam's Telemedicine System.\nEngineered for 100k daily consultations, p95 <200ms reads, <500ms writes,\nhigh availability (99.95%), zero double-booking concurrency guarantees,\nAES-256-GCM PHI encryption, RFC 6238 TOTP MFA, and immutable audit logs.\n"
+  },
+  "servers": [
+    {
+      "url": "http://localhost:3000",
+      "description": "Local Development Server"
+    },
+    {
+      "url": "https://api.amrutam.co.in",
+      "description": "Production Cluster"
+    }
+  ],
+  "components": {
+    "securitySchemes": {
+      "BearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT",
+        "description": "Enter standard JWT Bearer token obtained from /api/v1/auth/login"
+      },
+      "IdempotencyKey": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "Idempotency-Key",
+        "description": "Unique UUID v4 for exactly-once write execution semantics"
+      }
+    },
+    "schemas": {
+      "ApiResponse": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "example": true
+          },
+          "message": {
+            "type": "string",
+            "example": "Operation completed successfully"
+          },
+          "data": {
+            "type": "object"
+          }
+        }
+      },
+      "ErrorResponse": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "example": false
+          },
+          "error": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "type": "string",
+                "example": "VALIDATION_ERROR"
+              },
+              "message": {
+                "type": "string",
+                "example": "Input validation failed"
+              }
+            }
+          }
+        }
+      },
+      "RegisterRequest": {
+        "type": "object",
+        "required": [
+          "email",
+          "password",
+          "firstName",
+          "lastName"
+        ],
+        "properties": {
+          "email": {
+            "type": "string",
+            "format": "email",
+            "example": "arjun.patel@gmail.com"
+          },
+          "password": {
+            "type": "string",
+            "format": "password",
+            "example": "Pass@word123!"
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "PATIENT",
+              "DOCTOR",
+              "ADMIN"
+            ],
+            "default": "PATIENT"
+          },
+          "firstName": {
+            "type": "string",
+            "example": "Arjun"
+          },
+          "lastName": {
+            "type": "string",
+            "example": "Patel"
+          },
+          "phone": {
+            "type": "string",
+            "example": "+919988776655"
+          },
+          "dateOfBirth": {
+            "type": "string",
+            "format": "date",
+            "example": "1992-05-14"
+          },
+          "gender": {
+            "type": "string",
+            "example": "Male"
+          },
+          "bloodGroup": {
+            "type": "string",
+            "example": "B+"
+          }
+        }
+      },
+      "LoginRequest": {
+        "type": "object",
+        "required": [
+          "email",
+          "password"
+        ],
+        "properties": {
+          "email": {
+            "type": "string",
+            "format": "email",
+            "example": "dr.sharma@amrutam.co.in"
+          },
+          "password": {
+            "type": "string",
+            "format": "password",
+            "example": "AmrutamSecurePass123!"
+          }
+        }
+      },
+      "DoctorProfileRequest": {
+        "type": "object",
+        "required": [
+          "specialization",
+          "licenseNumber",
+          "yearsOfExperience",
+          "consultationFee"
+        ],
+        "properties": {
+          "specialization": {
+            "type": "string",
+            "example": "Ayurveda & Holistic Medicine"
+          },
+          "licenseNumber": {
+            "type": "string",
+            "example": "AYU-DL-2015-8942"
+          },
+          "yearsOfExperience": {
+            "type": "integer",
+            "example": 12
+          },
+          "consultationFee": {
+            "type": "number",
+            "example": 750
+          },
+          "bio": {
+            "type": "string",
+            "example": "Specialist in chronic autoimmune and digestive disorders"
+          },
+          "languages": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "example": [
+              "English",
+              "Hindi"
+            ]
+          }
+        }
+      },
+      "CreateSlotsRequest": {
+        "type": "object",
+        "required": [
+          "slotDate",
+          "startTime",
+          "endTime"
+        ],
+        "properties": {
+          "slotDate": {
+            "type": "string",
+            "format": "date",
+            "example": "2026-10-27"
+          },
+          "startTime": {
+            "type": "string",
+            "example": "09:00:00"
+          },
+          "endTime": {
+            "type": "string",
+            "example": "12:00:00"
+          },
+          "slotDurationMinutes": {
+            "type": "integer",
+            "default": 30,
+            "example": 30
+          },
+          "fee": {
+            "type": "number",
+            "example": 750
+          }
+        }
+      },
+      "BookSlotRequest": {
+        "type": "object",
+        "required": [
+          "slotId"
+        ],
+        "properties": {
+          "slotId": {
+            "type": "string",
+            "format": "uuid",
+            "example": "55555555-5555-4555-8555-555555555551"
+          },
+          "chiefComplaint": {
+            "type": "string",
+            "example": "Chronic digestive bloating and insomnia for 3 weeks"
+          },
+          "symptoms": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "example": [
+              "Bloating",
+              "Insomnia",
+              "Acid Reflux"
+            ]
+          }
+        }
+      },
+      "CreatePrescriptionRequest": {
+        "type": "object",
+        "required": [
+          "consultationId",
+          "diagnosis",
+          "medications"
+        ],
+        "properties": {
+          "consultationId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "diagnosis": {
+            "type": "string",
+            "example": "Pitta-Vata Imbalance with Agnimandya"
+          },
+          "medications": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "name",
+                "dosage",
+                "frequency",
+                "duration"
+              ],
+              "properties": {
+                "name": {
+                  "type": "string",
+                  "example": "Amrutam Kuntal Care Hair Herbal Concoction"
+                },
+                "dosage": {
+                  "type": "string",
+                  "example": "10ml"
+                },
+                "frequency": {
+                  "type": "string",
+                  "example": "Twice daily before meals"
+                },
+                "duration": {
+                  "type": "string",
+                  "example": "15 days"
+                },
+                "instructions": {
+                  "type": "string",
+                  "example": "Take with warm water"
+                }
+              }
+            }
+          },
+          "dietaryAdvice": {
+            "type": "string",
+            "example": "Avoid spicy, sour, and deep-fried foods; drink warm cumin tea"
+          },
+          "followUpDate": {
+            "type": "string",
+            "format": "date",
+            "example": "2026-11-10"
+          }
+        }
+      }
+    }
+  },
+  "paths": {
+    "/health": {
+      "get": {
+        "summary": "Liveness Probe",
+        "tags": [
+          "System"
+        ],
+        "responses": {
+          "200": {
+            "description": "Service is alive"
+          }
+        }
+      }
+    },
+    "/ready": {
+      "get": {
+        "summary": "Readiness Probe",
+        "tags": [
+          "System"
+        ],
+        "responses": {
+          "200": {
+            "description": "Database and Cache ready for traffic"
+          },
+          "503": {
+            "description": "Service degraded"
+          }
+        }
+      }
+    },
+    "/metrics": {
+      "get": {
+        "summary": "Prometheus Metrics",
+        "tags": [
+          "System"
+        ],
+        "responses": {
+          "200": {
+            "description": "Prometheus formatted metric metrics"
+          }
+        }
+      }
+    },
+    "/api/v1/auth/register": {
+      "post": {
+        "summary": "Register new patient, doctor, or admin",
+        "tags": [
+          "Auth"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegisterRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "User registered successfully"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          }
+        }
+      }
+    },
+    "/api/v1/auth/login": {
+      "post": {
+        "summary": "User authentication (Supports MFA challenge)",
+        "tags": [
+          "Auth"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LoginRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Login successful or MFA token challenge issued"
+          }
+        }
+      }
+    },
+    "/api/v1/auth/mfa/setup": {
+      "post": {
+        "summary": "Generate RFC 6238 TOTP secret and QR code",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "tags": [
+          "Auth"
+        ],
+        "responses": {
+          "200": {
+            "description": "QR code and secret generated"
+          }
+        }
+      }
+    },
+    "/api/v1/auth/mfa/verify": {
+      "post": {
+        "summary": "Confirm and activate TOTP MFA",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "tags": [
+          "Auth"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "token"
+                ],
+                "properties": {
+                  "token": {
+                    "type": "string",
+                    "example": "123456"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "MFA activated successfully"
+          }
+        }
+      }
+    },
+    "/api/v1/auth/mfa/login": {
+      "post": {
+        "summary": "Complete login with 6-digit MFA token",
+        "tags": [
+          "Auth"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "tempToken",
+                  "token"
+                ],
+                "properties": {
+                  "tempToken": {
+                    "type": "string"
+                  },
+                  "token": {
+                    "type": "string",
+                    "example": "123456"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "MFA verified, full JWT issued"
+          }
+        }
+      }
+    },
+    "/api/v1/auth/profile": {
+      "get": {
+        "summary": "Get authenticated user profile",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "tags": [
+          "Auth"
+        ],
+        "responses": {
+          "200": {
+            "description": "Current user and medical profile"
+          }
+        }
+      }
+    },
+    "/api/v1/doctors": {
+      "get": {
+        "summary": "Search and filter doctors",
+        "tags": [
+          "Doctors"
+        ],
+        "parameters": [
+          {
+            "in": "query",
+            "name": "specialization",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "minRating",
+            "schema": {
+              "type": "number"
+            }
+          },
+          {
+            "in": "query",
+            "name": "maxFee",
+            "schema": {
+              "type": "number"
+            }
+          },
+          {
+            "in": "query",
+            "name": "language",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "page",
+            "schema": {
+              "type": "integer",
+              "default": 1
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "type": "integer",
+              "default": 10
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Paginated doctor listing"
+          }
+        }
+      },
+      "post": {
+        "summary": "Create or update doctor profile",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "tags": [
+          "Doctors"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DoctorProfileRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Doctor profile created"
+          }
+        }
+      }
+    },
+    "/api/v1/doctors/{id}": {
+      "get": {
+        "summary": "Get doctor profile details by ID",
+        "tags": [
+          "Doctors"
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Doctor details"
+          }
+        }
+      }
+    },
+    "/api/v1/doctors/{id}/slots": {
+      "get": {
+        "summary": "Get available appointment slots for a doctor on a date",
+        "tags": [
+          "Doctors"
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "date",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date",
+              "example": "2026-10-27"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of available slots"
+          }
+        }
+      },
+      "post": {
+        "summary": "Batch generate availability slots",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "tags": [
+          "Doctors"
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateSlotsRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Slots created"
+          }
+        }
+      }
+    },
+    "/api/v1/bookings": {
+      "post": {
+        "summary": "Book an appointment slot with distributed lock and idempotency",
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {
+            "IdempotencyKey": []
+          }
+        ],
+        "tags": [
+          "Bookings"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BookSlotRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Consultation booked and payment confirmed"
+          },
+          "409": {
+            "description": "Slot conflict or already booked"
+          },
+          "422": {
+            "description": "Idempotency payload mismatch"
+          }
+        }
+      }
+    },
+    "/api/v1/bookings/{id}/cancel": {
+      "post": {
+        "summary": "Cancel consultation and trigger refund saga",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "tags": [
+          "Bookings"
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "reason"
+                ],
+                "properties": {
+                  "reason": {
+                    "type": "string",
+                    "example": "Emergency travel conflict"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Consultation cancelled and refund queued"
+          }
+        }
+      }
+    },
+    "/api/v1/consultations": {
+      "get": {
+        "summary": "List authenticated patient or doctor consultations",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "tags": [
+          "Consultations"
+        ],
+        "responses": {
+          "200": {
+            "description": "List of consultations"
+          }
+        }
+      }
+    },
+    "/api/v1/consultations/{id}": {
+      "get": {
+        "summary": "Get consultation details (decrypts clinical notes for authorized parties)",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "tags": [
+          "Consultations"
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Consultation details with decrypted PHI"
+          },
+          "403": {
+            "description": "Forbidden - unauthorized patient or doctor"
+          }
+        }
+      }
+    },
+    "/api/v1/consultations/{id}/status": {
+      "patch": {
+        "summary": "Update consultation state and record encrypted clinical notes",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "tags": [
+          "Consultations"
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "status"
+                ],
+                "properties": {
+                  "status": {
+                    "type": "string",
+                    "enum": [
+                      "SCHEDULED",
+                      "WAITING_ROOM",
+                      "IN_PROGRESS",
+                      "COMPLETED",
+                      "CANCELLED",
+                      "NO_SHOW"
+                    ]
+                  },
+                  "clinicalNotes": {
+                    "type": "string",
+                    "example": "Patient exhibits classic symptoms of Pitta aggravation with chronic hyperacidity. Prescribed herbal formulation."
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Consultation status updated"
+          }
+        }
+      }
+    },
+    "/api/v1/prescriptions": {
+      "post": {
+        "summary": "Issue digitally signed tamper-proof prescription",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "tags": [
+          "Prescriptions"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreatePrescriptionRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Prescription issued with SHA-256 digital signature"
+          }
+        }
+      }
+    },
+    "/api/v1/prescriptions/consultation/{consultationId}": {
+      "get": {
+        "summary": "Retrieve prescription and verify cryptographic signature",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "tags": [
+          "Prescriptions"
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "consultationId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Prescription details and verification status"
+          }
+        }
+      }
+    },
+    "/api/v1/analytics/dashboard": {
+      "get": {
+        "summary": "Admin Telemedicine Operations Analytics",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "tags": [
+          "Admin Analytics"
+        ],
+        "responses": {
+          "200": {
+            "description": "High-scale KPIs, financials, throughput, and status distribution"
+          }
+        }
+      }
+    },
+    "/api/v1/analytics/audit-logs": {
+      "get": {
+        "summary": "Admin Compliance Audit Trail (HIPAA/DISHA)",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "tags": [
+          "Admin Analytics"
+        ],
+        "parameters": [
+          {
+            "in": "query",
+            "name": "entityType",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "type": "integer",
+              "default": 50
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Immutable audit logs"
+          }
+        }
+      }
+    }
+  }
+}

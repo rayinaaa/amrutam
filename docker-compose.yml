@@ -1,0 +1,120 @@
+version: '3.8'
+
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: amrutam_telemedicine_api
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - DB_DRIVER=postgres
+      - DATABASE_URL=postgres://amrutam_user:amrutam_secret_pw@postgres:5432/amrutam_telemedicine
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_USER=amrutam_user
+      - DB_PASSWORD=amrutam_secret_pw
+      - DB_NAME=amrutam_telemedicine
+      - REDIS_URL=redis://redis:6379
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - JWT_SECRET=super-secret-jwt-key-replace-in-production-min-32-chars!
+      - JWT_REFRESH_SECRET=super-secret-refresh-key-replace-in-production!
+      - ENCRYPTION_KEY=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+      - LOG_LEVEL=info
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3000/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+    networks:
+      - amrutam-net
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: amrutam_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: amrutam_telemedicine
+      POSTGRES_USER: amrutam_user
+      POSTGRES_PASSWORD: amrutam_secret_pw
+    ports:
+      - "5432:5432"
+    volumes:
+      - amrutam_pgdata:/var/lib/postgresql/data
+      - ./src/infrastructure/database/migrations/001_initial_schema.sql:/docker-entrypoint-initdb.d/001_initial_schema.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U amrutam_user -d amrutam_telemedicine"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - amrutam-net
+
+  redis:
+    image: redis:7-alpine
+    container_name: amrutam_redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes --maxmemory 512mb --maxmemory-policy allkeys-lru
+    ports:
+      - "6379:6379"
+    volumes:
+      - amrutam_redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - amrutam-net
+
+  prometheus:
+    image: prom/prometheus:v2.54.1
+    container_name: amrutam_prometheus
+    restart: unless-stopped
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./infra/docker/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/usr/share/prometheus/console_libraries'
+      - '--web.console.templates=/usr/share/prometheus/consoles'
+    networks:
+      - amrutam-net
+
+  grafana:
+    image: grafana/grafana:11.1.0
+    container_name: amrutam_grafana
+    restart: unless-stopped
+    ports:
+      - "3001:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=amrutam_admin_pw
+      - GF_USERS_ALLOW_SIGN_UP=false
+    volumes:
+      - ./infra/docker/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./infra/docker/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    depends_on:
+      - prometheus
+    networks:
+      - amrutam-net
+
+volumes:
+  amrutam_pgdata:
+  amrutam_redisdata:
+
+networks:
+  amrutam-net:
+    driver: bridge
